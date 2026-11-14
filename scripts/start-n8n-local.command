@@ -12,15 +12,15 @@ ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && NARCH=x64 || NARCH=arm64; [ "$ARCH" 
 
 echo "== Clinic Triage Line: local n8n =="
 
-# 1. Node (n8n needs Node 20.19+ / 22 / 24)
-node_ok() { command -v node >/dev/null 2>&1 && node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit((a===20&&b>=19)||a===22||a===24?0:1)'; }
+# 1. Node (current n8n needs Node 24+)
+node_ok() { command -v node >/dev/null 2>&1 && node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>=24?0:1)'; }
 if ! node_ok; then
   if [ -x "$TOOLS/node/bin/node" ]; then export PATH="$TOOLS/node/bin:$PATH"; fi
 fi
 if ! node_ok; then
-  echo "Downloading Node 22 LTS into local-n8n/tools ..."
-  FILE=$(curl -fsSL https://nodejs.org/dist/latest-v22.x/SHASUMS256.txt | awk '{print $2}' | grep "darwin-$NARCH.tar.gz$")
-  curl -fSL "https://nodejs.org/dist/latest-v22.x/$FILE" -o "$TOOLS/node.tgz" || { echo "Node download failed"; read -r; exit 1; }
+  echo "Downloading Node 24 LTS into local-n8n/tools ..."
+  FILE=$(curl -fsSL https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt | awk '{print $2}' | grep "darwin-$NARCH.tar.gz$")
+  curl -fSL "https://nodejs.org/dist/latest-v24.x/$FILE" -o "$TOOLS/node.tgz" || { echo "Node download failed"; read -r; exit 1; }
   rm -rf "$TOOLS/node" && mkdir -p "$TOOLS/node" && tar -xzf "$TOOLS/node.tgz" -C "$TOOLS/node" --strip-components 1 && rm "$TOOLS/node.tgz"
   export PATH="$TOOLS/node/bin:$PATH"
 fi
