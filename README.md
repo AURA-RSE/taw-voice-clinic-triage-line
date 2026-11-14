@@ -148,14 +148,20 @@ N8N_VAPI_WEBHOOK_URL=https://<your-n8n>/webhook/vapi/clinic-triage VAPI_SHARED_S
 
 ## Screenshots
 
-_Added after the recorded run:_ `docs/screenshots/` (workflow, Vapi assistant, Callbacks sheet, calendar event, call log).
+**n8n workflow** (drawn from the exported `workflow/clinic-triage-line.json`: red = trigger, orange = code, green = Google Sheets, blue = Google Calendar API, purple = webhook responses)
+
+![workflow](docs/screenshots/workflow-graph.png)
+
+**Live run against the self-hosted n8n webhook, 14 Nov 2026** (the Terminal output re-rendered as an image; full log in [`docs/recorded-run/RUN_LOG.md`](docs/recorded-run/RUN_LOG.md)). At 20:27 on a Saturday the pharmacy is closed, so the refill call gets a callback offer; the emergency is redirected to 112; the callback is booked in Sheets and Calendar; the call report is logged; and a wrong secret gets 401.
+
+![live test run](docs/screenshots/live-test-run.png)
 
 ## Testing
 
 - `npm test`: 18 unit tests (emergency guard, intents, hours, clarify, callbacks, phone normalisation, Vapi payload handling, failure paths)
 - `node scripts/simulate-n8n.js`: runs the generated n8n Code nodes against `sample-data/`
 - [`docs/TEST_CHECKLIST.md`](docs/TEST_CHECKLIST.md): webhook and live-call checklist
-- `docs/recorded-run/`: recorded run (call transcript, sheet rows, n8n executions)
+- [`docs/recorded-run/RUN_LOG.md`](docs/recorded-run/RUN_LOG.md): recorded run against the live webhook
 
 ## Repo structure
 
