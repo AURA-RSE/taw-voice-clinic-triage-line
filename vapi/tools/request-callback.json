@@ -1,0 +1,63 @@
+{
+  "type": "function",
+  "function": {
+    "name": "request_callback",
+    "description": "Book a callback from a department that is closed or busy. Only call after the caller has agreed to be called back and you have repeated their number back to them.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "caller_name": {
+          "type": "string",
+          "description": "Caller's name"
+        },
+        "phone": {
+          "type": "string",
+          "description": "Best number to call back, digits only, as the caller confirmed it"
+        },
+        "department": {
+          "type": "string",
+          "enum": [
+            "appointments",
+            "billing",
+            "pharmacy",
+            "lab",
+            "records",
+            "nurse"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "description": "Short, non-clinical reason for the callback"
+        },
+        "consent_to_callback": {
+          "type": "boolean",
+          "description": "True only if the caller clearly agreed to be called back"
+        }
+      },
+      "required": [
+        "caller_name",
+        "phone",
+        "department",
+        "consent_to_callback"
+      ]
+    }
+  },
+  "server": {
+    "url": "{{N8N_VAPI_WEBHOOK_URL}}",
+    "timeoutSeconds": 20,
+    "headers": {
+      "X-Vapi-Secret": "{{VAPI_SHARED_SECRET}}"
+    }
+  },
+  "messages": [
+    {
+      "type": "request-start",
+      "content": "One moment while I book that."
+    },
+    {
+      "type": "request-failed",
+      "role": "system",
+      "content": "The callback could not be booked. Apologise and ask the caller to ring back during opening hours."
+    }
+  ]
+}
