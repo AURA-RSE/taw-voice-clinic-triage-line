@@ -10,9 +10,13 @@ const lib = fs
   .replace(/\/\/ --- n8n:strip-start[\s\S]*?\/\/ --- n8n:strip-end\n?/, '')
   .trim();
 
-const SHEET_NAME = 'Clinic Triage Line';
-const sheetsCred = { googleSheetsOAuth2Api: { name: 'Google Sheets account' } };
-const calendarCred = { googleCalendarOAuth2Api: { name: 'Google Calendar account' } };
+// Google auth: one Google Service Account credential (works on self-hosted n8n behind a changing tunnel URL).
+// Pass your IDs to bake them in: GOOGLE_SHEET_ID=... GOOGLE_CALENDAR_ID=... node scripts/build-workflow.js
+// VAPI_SHARED_SECRET=... bakes the webhook secret into the Code node. The committed export keeps placeholders
+// and an empty secret; never commit a filled-in export.
+const SHEET_ID = process.env.GOOGLE_SHEET_ID || 'YOUR_GOOGLE_SHEET_ID';
+const CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID || 'YOUR_CALENDAR_ID@group.calendar.google.com';
+const googleCred = { googleApi: { name: 'Google Service Account account' } };
 const retry = { retryOnFail: true, maxTries: 3, waitBetweenTries: 2000 };
 
 const handleCode = `// ===== Clinic config: edit these for your clinic =====
@@ -27,7 +31,7 @@ const CONFIG = {
 };
 // Same value as the secret on the Vapi server credential (sent as X-Vapi-Secret or Bearer token).
 // Leave empty only while testing locally.
-const VAPI_SHARED_SECRET = '';
+const VAPI_SHARED_SECRET = '${(process.env.VAPI_SHARED_SECRET || '').replace(/'/g, '')}';
 
 // ===== Routing library (generated from src/triage.js, do not edit here) =====
 ${lib}
@@ -72,14 +76,15 @@ function sheetAppend(name, tab, cols, valueFor, position) {
     parameters: {
       resource: 'sheet',
       operation: 'append',
-      documentId: { __rl: true, mode: 'list', value: '', cachedResultName: SHEET_NAME },
+      authentication: 'serviceAccount',
+      documentId: { __rl: true, mode: 'id', value: SHEET_ID },
       sheetName: { __rl: true, mode: 'name', value: tab },
       columns: { mappingMode: 'defineBelow', value, matchingColumns: [], schema: schema(cols) },
       options: { useAppend: true },
     },
     ...retry,
     onError: 'continueRegularOutput',
-    credentials: sheetsCred,
+    credentials: googleCred,
   };
 }
 function respond(name, body, position, code = 200) {
@@ -131,22 +136,24 @@ const nodes = [
   { name: 'Split Callbacks', type: 'n8n-nodes-base.code', typeVersion: 2, position: [896, 0], parameters: { mode: 'runOnceForAllItems', jsCode: splitCode } },
   sheetAppend('Log Callback Request', 'Callbacks', CALLBACK_COLS, (c) => `={{ $json.${c} }}`, [1120, 0]),
   {
+    // Google Calendar API called directly so the service account credential can be used.
     name: 'Create Callback Event',
-    type: 'n8n-nodes-base.googleCalendar',
-    typeVersion: 1.3,
+    type: 'n8n-nodes-base.httpRequest',
+    typeVersion: 4.2,
     position: [1344, 0],
     parameters: {
-      calendar: { __rl: true, mode: 'list', value: '', cachedResultName: 'Clinic Callbacks' },
-      start: "={{ $('Split Callbacks').item.json.callback_due }}",
-      end: "={{ $('Split Callbacks').item.json.callback_end }}",
-      additionalFields: {
-        summary: "=Callback: {{ $('Split Callbacks').item.json.department_label }} ({{ $('Split Callbacks').item.json.callback_id }})",
-        description: "=Call back {{ $('Split Callbacks').item.json.caller_name }} on {{ $('Split Callbacks').item.json.phone }}.\nReason: {{ $('Split Callbacks').item.json.reason }}\nCaller consented to a callback. Do not give clinical advice unless you are clinical staff.\nVapi call: {{ $('Split Callbacks').item.json.call_id }}",
-      },
+      method: 'POST',
+      url: `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(CALENDAR_ID)}/events`,
+      authentication: 'predefinedCredentialType',
+      nodeCredentialType: 'googleApi',
+      sendBody: true,
+      specifyBody: 'json',
+      jsonBody: "={{ JSON.stringify({ summary: 'Callback: ' + $('Split Callbacks').item.json.department_label + ' (' + $('Split Callbacks').item.json.callback_id + ')', description: 'Call back ' + $('Split Callbacks').item.json.caller_name + ' on ' + $('Split Callbacks').item.json.phone + '.\\nReason: ' + $('Split Callbacks').item.json.reason + '\\nCaller consented to a callback. Do not give clinical advice unless you are clinical staff.\\nVapi call: ' + $('Split Callbacks').item.json.call_id, start: { dateTime: $('Split Callbacks').item.json.callback_due }, end: { dateTime: $('Split Callbacks').item.json.callback_end } }) }}",
+      options: {},
     },
     ...retry,
     onError: 'continueRegularOutput',
-    credentials: calendarCred,
+    credentials: googleCred,
   },
   { name: 'Build Callback Response', type: 'n8n-nodes-base.code', typeVersion: 2, position: [1568, 0], parameters: { mode: 'runOnceForAllItems', jsCode: buildResponseCode } },
   respond('Respond: Callback Result', '={{ JSON.stringify($json.response) }}', [1792, 0]),

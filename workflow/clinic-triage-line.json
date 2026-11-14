@@ -177,11 +177,11 @@
       "parameters": {
         "resource": "sheet",
         "operation": "append",
+        "authentication": "serviceAccount",
         "documentId": {
           "__rl": true,
-          "mode": "list",
-          "value": "",
-          "cachedResultName": "Clinic Triage Line"
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
         },
         "sheetName": {
           "__rl": true,
@@ -325,40 +325,36 @@
       "waitBetweenTries": 2000,
       "onError": "continueRegularOutput",
       "credentials": {
-        "googleSheetsOAuth2Api": {
-          "name": "Google Sheets account"
+        "googleApi": {
+          "name": "Google Service Account account"
         }
       }
     },
     {
       "name": "Create Callback Event",
-      "type": "n8n-nodes-base.googleCalendar",
-      "typeVersion": 1.3,
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
       "position": [
         1344,
         0
       ],
       "parameters": {
-        "calendar": {
-          "__rl": true,
-          "mode": "list",
-          "value": "",
-          "cachedResultName": "Clinic Callbacks"
-        },
-        "start": "={{ $('Split Callbacks').item.json.callback_due }}",
-        "end": "={{ $('Split Callbacks').item.json.callback_end }}",
-        "additionalFields": {
-          "summary": "=Callback: {{ $('Split Callbacks').item.json.department_label }} ({{ $('Split Callbacks').item.json.callback_id }})",
-          "description": "=Call back {{ $('Split Callbacks').item.json.caller_name }} on {{ $('Split Callbacks').item.json.phone }}.\nReason: {{ $('Split Callbacks').item.json.reason }}\nCaller consented to a callback. Do not give clinical advice unless you are clinical staff.\nVapi call: {{ $('Split Callbacks').item.json.call_id }}"
-        }
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/YOUR_CALENDAR_ID%40group.calendar.google.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ summary: 'Callback: ' + $('Split Callbacks').item.json.department_label + ' (' + $('Split Callbacks').item.json.callback_id + ')', description: 'Call back ' + $('Split Callbacks').item.json.caller_name + ' on ' + $('Split Callbacks').item.json.phone + '.\\nReason: ' + $('Split Callbacks').item.json.reason + '\\nCaller consented to a callback. Do not give clinical advice unless you are clinical staff.\\nVapi call: ' + $('Split Callbacks').item.json.call_id, start: { dateTime: $('Split Callbacks').item.json.callback_due }, end: { dateTime: $('Split Callbacks').item.json.callback_end } }) }}",
+        "options": {}
       },
       "retryOnFail": true,
       "maxTries": 3,
       "waitBetweenTries": 2000,
       "onError": "continueRegularOutput",
       "credentials": {
-        "googleCalendarOAuth2Api": {
-          "name": "Google Calendar account"
+        "googleApi": {
+          "name": "Google Service Account account"
         }
       }
     },
@@ -434,11 +430,11 @@
       "parameters": {
         "resource": "sheet",
         "operation": "append",
+        "authentication": "serviceAccount",
         "documentId": {
           "__rl": true,
-          "mode": "list",
-          "value": "",
-          "cachedResultName": "Clinic Triage Line"
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
         },
         "sheetName": {
           "__rl": true,
@@ -572,8 +568,8 @@
       "waitBetweenTries": 2000,
       "onError": "continueRegularOutput",
       "credentials": {
-        "googleSheetsOAuth2Api": {
-          "name": "Google Sheets account"
+        "googleApi": {
+          "name": "Google Service Account account"
         }
       }
     },
