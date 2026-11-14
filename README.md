@@ -30,13 +30,24 @@ Clinic front desks are overloaded with calls that only need to be put through to
 |---|---|
 | Voice agent | Vapi (assistant + Function tools + Transfer Call + End Call) |
 | Telephony | Twilio phone number imported into Vapi (or a free Vapi number) |
-| Orchestration | n8n (one webhook workflow is the Vapi "server") |
-| Scheduling | Google Calendar (callback events) |
+| Orchestration | n8n, self-hosted on a Mac, exposed with a free Cloudflare quick tunnel (one webhook workflow is the Vapi "server") |
+| Scheduling | Google Calendar (callback events, via the Calendar API) |
 | Log | Google Sheets (`Callbacks` and `Call Log` tabs) |
 | LLM / voice | OpenAI `gpt-4o-mini` via Vapi, Deepgram transcriber, Vapi voice |
 | Logic + tests | Plain JavaScript (`src/triage.js`), Node's built-in test runner |
 
-The brief allows "Google Calendar/GHL": this build uses **Google Calendar**, because it's free and P2 already covered GHL.
+## Tools used (free tiers)
+
+Everything runs on free plans with no card on file.
+
+| Brief says | Used here | Why |
+|---|---|---|
+| Vapi or Retell | Vapi (trial credit) | Function tools + Transfer Call + end-of-call reports to one server URL |
+| n8n | **Self-hosted** n8n Community Edition on the developer's Mac + Cloudflare quick tunnel | The brief asks for self-hosted; the tunnel gives Vapi a public HTTPS URL for free. `scripts/start-n8n-local.command` sets it all up. |
+| Google Calendar/GHL | Google Calendar + Google Sheets through a **Google service account** | Free; no OAuth redirect URL, so it keeps working when the tunnel URL changes. GHL was covered in P2. |
+| Twilio | Optional | Needed only for a real phone number and PSTN transfers; browser test calls need no number |
+
+**Tunnel note:** a Cloudflare quick tunnel gets a new URL each restart. Re-run `scripts/setup-vapi.js` (or `setup-vapi.command`) afterwards; it updates the same Vapi tools and assistant in place.
 
 ## Architecture
 
@@ -85,12 +96,14 @@ Edit `DEPARTMENTS` in `src/triage.js`, then run `npm run build:workflow && npm r
    npm test                      # 18 routing tests
    node scripts/simulate-n8n.js  # runs the generated n8n code on the sample payloads
    ```
-2. **Google:** create a Google Sheet named `Clinic Triage Line` with two tabs, using the headers from `sample-data/`:
-   - `Callbacks`: `callbacks-sheet-template.csv` headers
-   - `Call Log`: `call-log-sheet-template.csv` headers
-
-   Then create a Google Calendar named `Clinic Callbacks`.
-3. **n8n:** import `workflow/clinic-triage-line.json` (*Workflows → Import from file*). Connect the Google Sheets and Google Calendar credentials, then select the sheet and calendar in the three Google nodes. In **Handle Vapi Message**, set `VAPI_SHARED_SECRET` and the `CONFIG` block (clinic name, timezone, emergency number). **Activate** the workflow and copy the production webhook URL.
+2. **Start n8n:** run `bash scripts/start-n8n-local.command`. It downloads Node 24 and cloudflared into `local-n8n/` if needed, starts n8n and a Cloudflare quick tunnel, and prints the public editor and webhook URLs. Keep the window open.
+3. **Google (free, no card):**
+   - In Google Cloud, create a project, then **Enable** the Google Sheets API, Google Calendar API and Google Drive API. Skip the "$300 free trial"; none of this needs billing.
+   - Create a service account and download its JSON key. Keep the key private; it's git-ignored.
+   - Create a Google Sheet `Clinic Triage Line` with tabs `Callbacks` and `Call Log`, using the headers from `sample-data/*-sheet-template.csv`. Create a calendar `Clinic Callbacks`.
+   - Share the sheet (Editor) and the calendar (Make changes to events) with the service account's email.
+   - In n8n, create a **Google Service Account API** credential with the account's email and private key. Turn on *Set up for use in HTTP Request node*, with scopes `https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.readonly`.
+   - Build the workflow with your IDs: `GOOGLE_SHEET_ID=... GOOGLE_CALENDAR_ID=... VAPI_SHARED_SECRET=... node scripts/build-workflow.js`. Import `workflow/clinic-triage-line.json` into n8n, select the credential on the three Google nodes, then **Save** and **Publish**. Don't commit the filled-in export.
 4. **Environment:** `cp .env.example .env` and fill it in. The department numbers must be **test numbers** (your own phone or teammates who agreed); on a Twilio trial they must also be Verified Caller IDs.
 5. **Vapi:** create the tools and assistant in one step:
    ```bash
