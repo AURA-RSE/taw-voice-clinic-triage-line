@@ -1,0 +1,17 @@
+{
+  "message": {
+    "timestamp": 1794855600000,
+    "type": "tool-calls",
+    "toolCallList": [
+      {
+        "id": "call_cb_demo_01",
+        "type": "function",
+        "function": {
+          "name": "request_callback",
+          "arguments": "{\"caller_name\":\"Ada Test\",\"phone\":\"+1 555 010 0101\",\"department\":\"billing\",\"reason\":\"Charged twice for a visit last week\",\"consent_to_callback\":true}"
+        }
+      }
+    ],
+    "call": { "id": "demo-call-0002", "type": "inboundPhoneCall", "customer": { "number": "+15550100101" } }
+  }
+}
