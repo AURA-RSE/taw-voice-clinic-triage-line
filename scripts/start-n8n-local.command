@@ -12,8 +12,8 @@ ARCH=$(uname -m); [ "$ARCH" = "x86_64" ] && NARCH=x64 || NARCH=arm64; [ "$ARCH" 
 
 echo "== Clinic Triage Line: local n8n =="
 
-# 1. Node (current n8n needs Node 24+)
-node_ok() { command -v node >/dev/null 2>&1 && node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a>=24?0:1)'; }
+# 1. Node (current n8n needs Node 24; its isolated-vm module is not built for 25+)
+node_ok() { command -v node >/dev/null 2>&1 && node -e 'const [a,b]=process.versions.node.split(".").map(Number);process.exit(a===24?0:1)'; }
 if ! node_ok; then
   if [ -x "$TOOLS/node/bin/node" ]; then export PATH="$TOOLS/node/bin:$PATH"; fi
 fi
