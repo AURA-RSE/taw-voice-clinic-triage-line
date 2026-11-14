@@ -1,0 +1,2 @@
+callback_id,call_id,caller_name,phone,department,department_label,reason,consent_to_callback,callback_due,callback_end,status,created_at
+CB-20261116-0002,demo-call-0002,Ada Test,+15550100101,billing,Billing and Insurance,Charged twice for a visit last week,true,2026-11-17T08:00:00.000Z,2026-11-17T08:15:00.000Z,pending,2026-11-16T18:00:00.000Z

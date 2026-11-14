@@ -1,0 +1,45 @@
+{
+  "type": "function",
+  "function": {
+    "name": "route_caller",
+    "description": "Decide where to send the caller. Call this as soon as you understand why they are calling. Returns an action: transfer, callback, clarify or emergency, with an instruction to follow.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "description": "Why the caller is calling, in their own words (one sentence). Include any urgent symptoms they mentioned."
+        },
+        "department": {
+          "type": "string",
+          "enum": [
+            "appointments",
+            "billing",
+            "pharmacy",
+            "lab",
+            "records",
+            "nurse"
+          ],
+          "description": "Your best guess of the department, only if you are confident."
+        }
+      },
+      "required": [
+        "reason"
+      ]
+    }
+  },
+  "server": {
+    "url": "{{N8N_VAPI_WEBHOOK_URL}}",
+    "timeoutSeconds": 20,
+    "headers": {
+      "X-Vapi-Secret": "{{VAPI_SHARED_SECRET}}"
+    }
+  },
+  "messages": [
+    {
+      "type": "request-failed",
+      "role": "system",
+      "content": "The routing service failed. Apologise briefly and offer to take a callback request."
+    }
+  ]
+}

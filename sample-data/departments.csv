@@ -1,0 +1,7 @@
+key,label,hours (Africa/Lagos),transfer number (test only)
+appointments,Appointments and Front Desk,Mon-Fri 08:00-18:00; Sat 09:00-13:00,DEPT_APPOINTMENTS_NUMBER
+billing,Billing and Insurance,Mon-Fri 09:00-17:00,DEPT_BILLING_NUMBER
+pharmacy,Pharmacy and Prescription Refills,Mon-Sat 08:00-20:00,DEPT_PHARMACY_NUMBER
+lab,Laboratory and Test Results,Mon-Fri 07:30-16:00,DEPT_LAB_NUMBER
+records,Medical Records,Mon-Fri 09:00-16:00,DEPT_RECORDS_NUMBER
+nurse,Nurse Line,Every day 08:00-20:00,DEPT_NURSE_NUMBER

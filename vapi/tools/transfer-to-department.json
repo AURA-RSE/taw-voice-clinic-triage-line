@@ -1,0 +1,66 @@
+{
+  "type": "transferCall",
+  "destinations": [
+    {
+      "type": "number",
+      "number": "{{DEPT_APPOINTMENTS_NUMBER}}",
+      "message": "Connecting you to Appointments and Front Desk now. Please hold.",
+      "description": "Appointments and Front Desk: appointment, book, booking, reschedule, cancel, new patient. Use only after route_caller returned action \"transfer\" with department \"appointments\".",
+      "transferPlan": {
+        "mode": "blind-transfer"
+      }
+    },
+    {
+      "type": "number",
+      "number": "{{DEPT_BILLING_NUMBER}}",
+      "message": "Connecting you to Billing and Insurance now. Please hold.",
+      "description": "Billing and Insurance: bill, billing, invoice, payment, pay, paid. Use only after route_caller returned action \"transfer\" with department \"billing\".",
+      "transferPlan": {
+        "mode": "blind-transfer"
+      }
+    },
+    {
+      "type": "number",
+      "number": "{{DEPT_PHARMACY_NUMBER}}",
+      "message": "Connecting you to Pharmacy and Prescription Refills now. Please hold.",
+      "description": "Pharmacy and Prescription Refills: refill, prescription, medication, medicine, pharmacy, drugs. Use only after route_caller returned action \"transfer\" with department \"pharmacy\".",
+      "transferPlan": {
+        "mode": "blind-transfer"
+      }
+    },
+    {
+      "type": "number",
+      "number": "{{DEPT_LAB_NUMBER}}",
+      "message": "Connecting you to Laboratory and Test Results now. Please hold.",
+      "description": "Laboratory and Test Results: lab, laboratory, result, results, blood test, blood work. Use only after route_caller returned action \"transfer\" with department \"lab\".",
+      "transferPlan": {
+        "mode": "blind-transfer"
+      }
+    },
+    {
+      "type": "number",
+      "number": "{{DEPT_RECORDS_NUMBER}}",
+      "message": "Connecting you to Medical Records now. Please hold.",
+      "description": "Medical Records: records, medical record, copy of my, sick note, doctor's letter, doctors letter. Use only after route_caller returned action \"transfer\" with department \"records\".",
+      "transferPlan": {
+        "mode": "blind-transfer"
+      }
+    },
+    {
+      "type": "number",
+      "number": "{{DEPT_NURSE_NUMBER}}",
+      "message": "Connecting you to Nurse Line now. Please hold.",
+      "description": "Nurse Line: symptom, symptoms, fever, temperature, pain, hurts. Use only after route_caller returned action \"transfer\" with department \"nurse\".",
+      "transferPlan": {
+        "mode": "blind-transfer"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "type": "request-failed",
+      "role": "system",
+      "content": "The transfer did not go through. Apologise and offer a callback instead."
+    }
+  ]
+}

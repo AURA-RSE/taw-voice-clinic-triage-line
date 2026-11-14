@@ -1,0 +1,744 @@
+{
+  "name": "Clinic Triage Line - Vapi Server",
+  "nodes": [
+    {
+      "name": "Vapi Server Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "clinic-triage-line",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vapi/clinic-triage",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "name": "Handle Vapi Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// ===== Clinic config: edit these for your clinic =====\nconst CONFIG = {\n  clinicName: 'Harbourview Family Clinic',\n  timezone: 'Africa/Lagos',\n  emergencyNumber: '112',\n  crisisLine: 'your local crisis line',\n  defaultCountryCode: '234',\n  callbackLeadMinutes: 30,\n  callbackDurationMinutes: 15,\n};\n// Same value as the secret on the Vapi server credential (sent as X-Vapi-Secret or Bearer token).\n// Leave empty only while testing locally.\nconst VAPI_SHARED_SECRET = '';\n\n// ===== Routing library (generated from src/triage.js, do not edit here) =====\n// Clinic Triage Line: routing logic.\n// The same code runs in the tests (node) and inside the n8n Code node\n// \"Handle Vapi Message\" (scripts/build-workflow.js copies it in).\n// No medical advice is ever produced here: the logic only decides WHERE a caller goes.\n\nconst DEFAULT_CONFIG = {\n  clinicName: 'Harbourview Family Clinic',\n  timezone: 'Africa/Lagos',\n  emergencyNumber: '112',\n  crisisLine: 'your local crisis line',\n  defaultCountryCode: '234',\n  callbackLeadMinutes: 30,\n  callbackDurationMinutes: 15,\n};\n\n// Hours are [open, close] in 24h \"HH:MM\", keyed by weekday (0 = Sunday).\nconst WEEKDAYS_8_6 = { 1: ['08:00', '18:00'], 2: ['08:00', '18:00'], 3: ['08:00', '18:00'], 4: ['08:00', '18:00'], 5: ['08:00', '18:00'], 6: ['09:00', '13:00'] };\n\nconst DEPARTMENTS = {\n  appointments: {\n    label: 'Appointments and Front Desk',\n    keywords: ['appointment', 'book', 'booking', 'reschedule', 'cancel', 'new patient', 'register', 'registration', 'opening hours', 'open today', 'directions', 'address', 'location', 'see a doctor', 'see the doctor', 'check in'],\n    hours: WEEKDAYS_8_6,\n  },\n  billing: {\n    label: 'Billing and Insurance',\n    keywords: ['bill', 'billing', 'invoice', 'payment', 'pay', 'paid', 'charge', 'charged', 'insurance', 'hmo', 'refund', 'receipt', 'balance', 'cost', 'price', 'fee'],\n    hours: { 1: ['09:00', '17:00'], 2: ['09:00', '17:00'], 3: ['09:00', '17:00'], 4: ['09:00', '17:00'], 5: ['09:00', '17:00'] },\n  },\n  pharmacy: {\n    label: 'Pharmacy and Prescription Refills',\n    keywords: ['refill', 'prescription', 'medication', 'medicine', 'pharmacy', 'drugs', 'pills', 'repeat prescription', 'pick up my'],\n    hours: { 1: ['08:00', '20:00'], 2: ['08:00', '20:00'], 3: ['08:00', '20:00'], 4: ['08:00', '20:00'], 5: ['08:00', '20:00'], 6: ['08:00', '20:00'] },\n  },\n  lab: {\n    label: 'Laboratory and Test Results',\n    keywords: ['lab', 'laboratory', 'result', 'results', 'blood test', 'blood work', 'x-ray', 'xray', 'scan', 'ultrasound', 'sample', 'urine test'],\n    hours: { 1: ['07:30', '16:00'], 2: ['07:30', '16:00'], 3: ['07:30', '16:00'], 4: ['07:30', '16:00'], 5: ['07:30', '16:00'] },\n  },\n  records: {\n    label: 'Medical Records',\n    keywords: ['records', 'medical record', 'copy of my', 'sick note', 'doctor\\'s letter', 'doctors letter', 'referral letter', 'medical report', 'transfer my file', 'fitness certificate'],\n    hours: { 1: ['09:00', '16:00'], 2: ['09:00', '16:00'], 3: ['09:00', '16:00'], 4: ['09:00', '16:00'], 5: ['09:00', '16:00'] },\n  },\n  nurse: {\n    label: 'Nurse Line',\n    keywords: ['symptom', 'symptoms', 'fever', 'temperature', 'pain', 'hurts', 'feel sick', 'feeling sick', 'unwell', 'rash', 'cough', 'vomit', 'vomiting', 'diarrh', 'headache', 'side effect', 'should i take', 'is it normal', 'advice', 'nurse', 'dizzy', 'swollen'],\n    hours: { 0: ['08:00', '20:00'], 1: ['08:00', '20:00'], 2: ['08:00', '20:00'], 3: ['08:00', '20:00'], 4: ['08:00', '20:00'], 5: ['08:00', '20:00'], 6: ['08:00', '20:00'] },\n  },\n};\n\n// Red flags: the caller is told to hang up and call emergency services. Never transferred, never advised.\nconst EMERGENCY_PATTERNS = [\n  /chest (pain|tightness|pressure)/, /heart attack/, /(can'?t|cannot|can not|struggling to|trouble|difficulty) breath/, /not breathing/, /stopped breathing/,\n  /unconscious/, /unresponsive/, /passed out/, /collapsed/, /(severe|heavy|heavily|won'?t stop) bleed/, /bleeding (heavily|a lot|badly)/,\n  /stroke/, /face (is )?droop/, /slurred speech/, /seizure/, /fitting/, /convuls/, /overdose/, /poison/, /choking/,\n  /anaphyla/, /(throat|tongue|lips?) (is |are )?(swelling|swollen|closing)/, /baby (is )?not moving/, /labou?r (pains?|has started)/,\n];\nconst SELF_HARM_PATTERNS = [/suicid/, /kill (myself|himself|herself)/, /end (my|his|her) life/, /hurt (myself|himself|herself)/, /self[- ]harm/];\n\nfunction normalizeText(text) {\n  return String(text || '').toLowerCase().replace(/[’`]/g, \"'\").replace(/\\s+/g, ' ').trim();\n}\n\nfunction detectEmergency(text) {\n  const t = normalizeText(text);\n  if (!t) return { isEmergency: false, selfHarm: false };\n  const selfHarm = SELF_HARM_PATTERNS.some((p) => p.test(t));\n  const medical = EMERGENCY_PATTERNS.some((p) => p.test(t));\n  return { isEmergency: selfHarm || medical, selfHarm };\n}\n\nfunction escapeRegex(s) {\n  return s.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n}\n\n// Keyword scoring. Returns the best department, or null when nothing matches or two departments tie.\nfunction classifyIntent(text) {\n  const t = normalizeText(text);\n  const scores = [];\n  for (const [key, dept] of Object.entries(DEPARTMENTS)) {\n    const matched = dept.keywords.filter((k) => new RegExp('(^|[^a-z])' + escapeRegex(k), 'i').test(t));\n    if (matched.length) scores.push({ department: key, score: matched.length, matched });\n  }\n  scores.sort((a, b) => b.score - a.score);\n  if (!scores.length) return { department: null, confidence: 'none', matched: [] };\n  if (scores.length > 1 && scores[0].score === scores[1].score) {\n    return { department: null, confidence: 'ambiguous', matched: scores.flatMap((s) => s.matched), candidates: scores.slice(0, 3).map((s) => s.department) };\n  }\n  return { department: scores[0].department, confidence: scores[0].score > 1 ? 'high' : 'medium', matched: scores[0].matched };\n}\n\n// Local wall-clock parts in the clinic's timezone.\nfunction localParts(date, timezone) {\n  const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: timezone, weekday: 'short', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });\n  const p = Object.fromEntries(fmt.formatToParts(date).map((x) => [x.type, x.value]));\n  const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[p.weekday];\n  return { weekday: wd, minutes: Number(p.hour) * 60 + Number(p.minute), ymd: `${p.year}-${p.month}-${p.day}` };\n}\n\nfunction toMinutes(hhmm) {\n  const [h, m] = hhmm.split(':').map(Number);\n  return h * 60 + m;\n}\n\nfunction isOpen(departmentKey, date, timezone) {\n  const dept = DEPARTMENTS[departmentKey];\n  if (!dept) return false;\n  const { weekday, minutes } = localParts(date, timezone);\n  const slot = dept.hours[weekday];\n  return Boolean(slot) && minutes >= toMinutes(slot[0]) && minutes < toMinutes(slot[1]);\n}\n\n// Next moment the department opens (searches up to 8 days ahead in 15-minute steps).\nfunction nextOpening(departmentKey, date, timezone) {\n  const step = 15 * 60 * 1000;\n  let t = new Date(Math.ceil(date.getTime() / step) * step);\n  for (let i = 0; i < 8 * 24 * 4; i++, t = new Date(t.getTime() + step)) {\n    if (isOpen(departmentKey, t, timezone)) return t;\n  }\n  return null;\n}\n\nfunction describeTime(date, timezone) {\n  return new Intl.DateTimeFormat('en-GB', { timeZone: timezone, weekday: 'long', hour: 'numeric', minute: '2-digit', hour12: true }).format(date);\n}\n\n// Main routing decision for the route_caller tool.\n// args: { reason, department? } where department is the model's own pick (optional).\nfunction routeCaller(args, now, config) {\n  const cfg = Object.assign({}, DEFAULT_CONFIG, config || {});\n  const reason = String((args && args.reason) || '').trim();\n  const emergency = detectEmergency(reason);\n  if (emergency.isEmergency) {\n    const say = emergency.selfHarm\n      ? `Tell the caller you are concerned for their safety, that this line cannot help with this, and that they should hang up and call ${cfg.emergencyNumber} or ${cfg.crisisLine} right now. Do not transfer. Do not give medical advice.`\n      : `Tell the caller this sounds like an emergency, that they should hang up and call ${cfg.emergencyNumber} immediately or go to the nearest emergency department. Do not transfer. Do not give medical advice.`;\n    return { action: 'emergency', department: null, open: null, instruction: say };\n  }\n\n  let department = args && args.department && DEPARTMENTS[String(args.department).toLowerCase()] ? String(args.department).toLowerCase() : null;\n  let source = department ? 'model' : 'keywords';\n  let classification = null;\n  if (!department) {\n    classification = classifyIntent(reason);\n    department = classification.department;\n  }\n  if (!department) {\n    const options = (classification && classification.candidates) || Object.keys(DEPARTMENTS);\n    return {\n      action: 'clarify',\n      department: null,\n      open: null,\n      candidates: options,\n      instruction: `Ask one short question to find out which of these the caller needs: ${options.map((k) => DEPARTMENTS[k].label).join(', ')}.`,\n    };\n  }\n\n  const label = DEPARTMENTS[department].label;\n  if (isOpen(department, now, cfg.timezone)) {\n    return {\n      action: 'transfer',\n      department,\n      department_label: label,\n      open: true,\n      source,\n      instruction: `Tell the caller you are connecting them to ${label}, then call transferCall with the ${label} destination in the same turn.`,\n    };\n  }\n  const opens = nextOpening(department, now, cfg.timezone);\n  return {\n    action: 'callback',\n    department,\n    department_label: label,\n    open: false,\n    source,\n    next_open: opens ? opens.toISOString() : null,\n    next_open_spoken: opens ? describeTime(opens, cfg.timezone) : null,\n    instruction: `${label} is closed right now${opens ? ` and opens ${describeTime(opens, cfg.timezone)}` : ''}. Offer a callback: collect name, best number and consent, then call request_callback.`,\n  };\n}\n\nfunction normalizePhone(raw, defaultCountryCode) {\n  let p = String(raw || '').replace(/[^+0-9]/g, '');\n  if (!p) return '';\n  if (p.startsWith('00')) p = '+' + p.slice(2);\n  if (!p.startsWith('+')) p = p.startsWith('0') ? '+' + defaultCountryCode + p.slice(1) : '+' + p;\n  return /^\\+[1-9][0-9]{7,14}$/.test(p) ? p : '';\n}\n\nfunction isTruthy(v) {\n  return v === true || /^(true|yes|y|1)$/i.test(String(v || '').trim());\n}\n\n// Validates the request_callback arguments and builds the record to log + schedule.\nfunction buildCallback(args, now, config, callId) {\n  const cfg = Object.assign({}, DEFAULT_CONFIG, config || {});\n  const a = args || {};\n  const errors = [];\n  const name = String(a.caller_name || '').trim();\n  const phone = normalizePhone(a.phone, cfg.defaultCountryCode);\n  const department = DEPARTMENTS[String(a.department || '').toLowerCase()] ? String(a.department).toLowerCase() : null;\n  const reason = String(a.reason || '').trim().slice(0, 300);\n  if (!name) errors.push('caller_name is missing');\n  if (!phone) errors.push('phone is missing or not a valid number');\n  if (!department) errors.push('department is missing or unknown');\n  if (!isTruthy(a.consent_to_callback)) errors.push('caller has not agreed to a callback');\n  if (detectEmergency(reason).isEmergency) errors.push('reason describes an emergency');\n  if (errors.length) return { ok: false, errors };\n\n  const leadMs = cfg.callbackLeadMinutes * 60 * 1000;\n  const earliest = new Date(now.getTime() + leadMs);\n  let due = isOpen(department, earliest, cfg.timezone) ? earliest : nextOpening(department, earliest, cfg.timezone);\n  if (!due) due = earliest;\n  const end = new Date(due.getTime() + cfg.callbackDurationMinutes * 60 * 1000);\n  const ymd = localParts(now, cfg.timezone).ymd.replace(/-/g, '');\n  const suffix = String(callId || now.getTime()).replace(/[^a-zA-Z0-9]/g, '').slice(-4).toUpperCase() || '0000';\n  return {\n    ok: true,\n    record: {\n      callback_id: `CB-${ymd}-${suffix}`,\n      call_id: String(callId || ''),\n      caller_name: name,\n      phone,\n      department,\n      department_label: DEPARTMENTS[department].label,\n      reason,\n      consent_to_callback: true,\n      callback_due: due.toISOString(),\n      callback_due_spoken: describeTime(due, cfg.timezone),\n      callback_end: end.toISOString(),\n      status: 'pending',\n      created_at: now.toISOString(),\n    },\n  };\n}\n\nfunction maskPhone(p) {\n  const s = String(p || '');\n  return s.length > 4 ? s.slice(0, -4).replace(/[0-9]/g, '•') + s.slice(-4) : s;\n}\n\nfunction parseArgs(raw) {\n  if (raw && typeof raw === 'object') return raw;\n  try { return JSON.parse(raw || '{}'); } catch (e) { return null; }\n}\n\n// Turns one Vapi server message into: the HTTP response body, plus side effects for n8n to run.\nfunction handleVapiMessage(body, now, config) {\n  const msg = (body && body.message) || {};\n  const callId = (msg.call && msg.call.id) || '';\n\n  if (msg.type === 'tool-calls') {\n    const calls = msg.toolCallList || (msg.toolWithToolCallList || []).map((t) => t.toolCall) || [];\n    const results = [];\n    const callbacks = [];\n    for (const tc of calls) {\n      const fn = (tc && tc.function) || {};\n      const args = parseArgs(fn.arguments);\n      if (!args) { results.push({ toolCallId: tc.id, error: 'Arguments could not be read. Ask the caller to repeat.' }); continue; }\n      if (fn.name === 'route_caller') {\n        results.push({ toolCallId: tc.id, result: JSON.stringify(routeCaller(args, now, config)) });\n      } else if (fn.name === 'request_callback') {\n        const cb = buildCallback(args, now, config, callId);\n        if (!cb.ok) results.push({ toolCallId: tc.id, error: 'Callback not booked: ' + cb.errors.join('; ') + '. Ask the caller for what is missing.' });\n        else { callbacks.push(Object.assign({ tool_call_id: tc.id }, cb.record)); results.push({ toolCallId: tc.id, result: '__PENDING_CALLBACK__' }); }\n      } else {\n        results.push({ toolCallId: tc.id, error: `Unknown tool ${fn.name}` });\n      }\n    }\n    return { kind: 'tool-calls', response: { results }, callbacks };\n  }\n\n  if (msg.type === 'end-of-call-report') {\n    const analysis = msg.analysis || {};\n    const sd = analysis.structuredData || {};\n    const call = msg.call || {};\n    const customer = (call.customer && call.customer.number) || (msg.customer && msg.customer.number) || '';\n    const started = msg.startedAt || call.startedAt || '';\n    const ended = msg.endedAt || call.endedAt || '';\n    const duration = started && ended ? Math.round((new Date(ended) - new Date(started)) / 1000) : (msg.durationSeconds || '');\n    return {\n      kind: 'end-of-call-report',\n      response: { ok: true },\n      callLog: {\n        call_id: callId,\n        caller: maskPhone(customer),\n        started_at: started,\n        ended_at: ended,\n        duration_seconds: duration,\n        ended_reason: msg.endedReason || '',\n        department: sd.department || '',\n        outcome: sd.outcome || (msg.endedReason === 'assistant-forwarded-call' ? 'transferred' : ''),\n        emergency_flagged: sd.emergency_flagged === true,\n        summary: String(analysis.summary || msg.summary || '').slice(0, 1000),\n        logged_at: now.toISOString(),\n      },\n    };\n  }\n\n  return { kind: msg.type || 'unknown', response: {} };\n}\n\n// Fills in the callback result after n8n has tried to log/schedule it.\nfunction finalizeCallbackResponse(response, callbacks, outcome) {\n  const byId = Object.fromEntries((callbacks || []).map((c) => [c.tool_call_id, c]));\n  const results = response.results.map((r) => {\n    if (r.result !== '__PENDING_CALLBACK__') return r;\n    const cb = byId[r.toolCallId];\n    if (!outcome.logged) {\n      return { toolCallId: r.toolCallId, error: 'The callback could not be saved because of a system problem. Apologise and ask the caller to ring back during opening hours.' };\n    }\n    const when = cb ? cb.callback_due_spoken : 'soon';\n    const note = outcome.scheduled ? '' : ' (calendar entry pending, the team will see it in the callback list)';\n    return { toolCallId: r.toolCallId, result: `Callback booked. Reference ${cb.callback_id}. ${cb.department_label} will call ${cb.caller_name} back around ${when}${note}.` };\n  });\n  return { results };\n}\n\n// ===== Handler =====\nconst req = $input.first().json;\nconst headers = req.headers || {};\nconst presented = headers['x-vapi-secret'] || String(headers['authorization'] || '').replace(/^Bearer\\s+/i, '');\nif (VAPI_SHARED_SECRET && presented !== VAPI_SHARED_SECRET) {\n  return [{ json: { kind: 'unauthorized', response: { error: 'unauthorized' } } }];\n}\nconst out = handleVapiMessage(req.body || {}, new Date(), CONFIG);\nreturn [{ json: out }];\n"
+      }
+    },
+    {
+      "name": "Route by Message Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        448,
+        300
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "s1",
+                    "leftValue": "={{ $json.kind }}",
+                    "rightValue": "tool-calls",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "tool-calls"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "s2",
+                    "leftValue": "={{ $json.kind }}",
+                    "rightValue": "end-of-call-report",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "end-of-call-report"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "s3",
+                    "leftValue": "={{ $json.kind }}",
+                    "rightValue": "unauthorized",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "unauthorized"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "other"
+        }
+      }
+    },
+    {
+      "name": "Callback Requested?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ ($json.callbacks || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Split Callbacks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// One item per callback so each gets its own sheet row and calendar event.\nreturn ($input.first().json.callbacks || []).map((c) => ({ json: c }));\n"
+      }
+    },
+    {
+      "name": "Log Callback Request",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Callbacks"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "callback_id": "={{ $json.callback_id }}",
+            "call_id": "={{ $json.call_id }}",
+            "caller_name": "={{ $json.caller_name }}",
+            "phone": "={{ $json.phone }}",
+            "department": "={{ $json.department }}",
+            "department_label": "={{ $json.department_label }}",
+            "reason": "={{ $json.reason }}",
+            "consent_to_callback": "={{ $json.consent_to_callback }}",
+            "callback_due": "={{ $json.callback_due }}",
+            "callback_end": "={{ $json.callback_end }}",
+            "status": "={{ $json.status }}",
+            "created_at": "={{ $json.created_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "callback_id",
+              "displayName": "callback_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "call_id",
+              "displayName": "call_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "caller_name",
+              "displayName": "caller_name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "department",
+              "displayName": "department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "department_label",
+              "displayName": "department_label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "consent_to_callback",
+              "displayName": "consent_to_callback",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "callback_due",
+              "displayName": "callback_due",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "callback_end",
+              "displayName": "callback_end",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "created_at",
+              "displayName": "created_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "useAppend": true
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleApi": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "name": "Create Callback Event",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/YOUR_CALENDAR_ID%40group.calendar.google.com/events",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ summary: 'Callback: ' + $('Split Callbacks').item.json.department_label + ' (' + $('Split Callbacks').item.json.callback_id + ')', description: 'Call back ' + $('Split Callbacks').item.json.caller_name + ' on ' + $('Split Callbacks').item.json.phone + '.\\nReason: ' + $('Split Callbacks').item.json.reason + '\\nCaller consented to a callback. Do not give clinical advice unless you are clinical staff.\\nVapi call: ' + $('Split Callbacks').item.json.call_id, start: { dateTime: $('Split Callbacks').item.json.callback_due }, end: { dateTime: $('Split Callbacks').item.json.callback_end } }) }}",
+        "options": {}
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleApi": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "name": "Build Callback Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "function finalizeCallbackResponse(response, callbacks, outcome) {\n  const byId = Object.fromEntries((callbacks || []).map((c) => [c.tool_call_id, c]));\n  const results = response.results.map((r) => {\n    if (r.result !== '__PENDING_CALLBACK__') return r;\n    const cb = byId[r.toolCallId];\n    if (!outcome.logged) {\n      return { toolCallId: r.toolCallId, error: 'The callback could not be saved because of a system problem. Apologise and ask the caller to ring back during opening hours.' };\n    }\n    const when = cb ? cb.callback_due_spoken : 'soon';\n    const note = outcome.scheduled ? '' : ' (calendar entry pending, the team will see it in the callback list)';\n    return { toolCallId: r.toolCallId, result: `Callback booked. Reference ${cb.callback_id}. ${cb.department_label} will call ${cb.caller_name} back around ${when}${note}.` };\n  });\n  return { results };\n}\n\n// A failed node (continue on error) outputs an item carrying an \"error\" field.\nconst handled = $('Handle Vapi Message').first().json;\nconst sheetOut = $('Log Callback Request').all();\nconst calOut = $('Create Callback Event').all();\nconst logged = sheetOut.length > 0 && sheetOut.every((i) => !i.json.error);\nconst scheduled = calOut.length > 0 && calOut.every((i) => !i.json.error);\nreturn [{ json: { response: finalizeCallbackResponse(handled.response, handled.callbacks, { logged, scheduled }), logged, scheduled } }];\n"
+      }
+    },
+    {
+      "name": "Respond: Callback Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1792,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "name": "Respond: Tool Results",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.response) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "name": "Respond: Report Received",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        304
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "name": "Log Call",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        896,
+        304
+      ],
+      "parameters": {
+        "resource": "sheet",
+        "operation": "append",
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_GOOGLE_SHEET_ID"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "Call Log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "call_id": "={{ $('Handle Vapi Message').item.json.callLog.call_id }}",
+            "caller": "={{ $('Handle Vapi Message').item.json.callLog.caller }}",
+            "started_at": "={{ $('Handle Vapi Message').item.json.callLog.started_at }}",
+            "ended_at": "={{ $('Handle Vapi Message').item.json.callLog.ended_at }}",
+            "duration_seconds": "={{ $('Handle Vapi Message').item.json.callLog.duration_seconds }}",
+            "ended_reason": "={{ $('Handle Vapi Message').item.json.callLog.ended_reason }}",
+            "department": "={{ $('Handle Vapi Message').item.json.callLog.department }}",
+            "outcome": "={{ $('Handle Vapi Message').item.json.callLog.outcome }}",
+            "emergency_flagged": "={{ $('Handle Vapi Message').item.json.callLog.emergency_flagged }}",
+            "summary": "={{ $('Handle Vapi Message').item.json.callLog.summary }}",
+            "logged_at": "={{ $('Handle Vapi Message').item.json.callLog.logged_at }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "call_id",
+              "displayName": "call_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "caller",
+              "displayName": "caller",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "started_at",
+              "displayName": "started_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ended_at",
+              "displayName": "ended_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duration_seconds",
+              "displayName": "duration_seconds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ended_reason",
+              "displayName": "ended_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "department",
+              "displayName": "department",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "outcome",
+              "displayName": "outcome",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "emergency_flagged",
+              "displayName": "emergency_flagged",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "summary",
+              "displayName": "summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "logged_at",
+              "displayName": "logged_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "useAppend": true
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "googleApi": {
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "name": "Respond: Unauthorized",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        496
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ error: \"unauthorized\" }) }}",
+        "options": {
+          "responseCode": 401
+        }
+      }
+    },
+    {
+      "name": "Respond: Acknowledge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        672,
+        688
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Vapi Server Webhook": {
+      "main": [
+        [
+          {
+            "node": "Handle Vapi Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Vapi Message": {
+      "main": [
+        [
+          {
+            "node": "Route by Message Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Message Type": {
+      "main": [
+        [
+          {
+            "node": "Callback Requested?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Report Received",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Unauthorized",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Acknowledge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Callback Requested?": {
+      "main": [
+        [
+          {
+            "node": "Split Callbacks",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Tool Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Callbacks": {
+      "main": [
+        [
+          {
+            "node": "Log Callback Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Callback Request": {
+      "main": [
+        [
+          {
+            "node": "Create Callback Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Callback Event": {
+      "main": [
+        [
+          {
+            "node": "Build Callback Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Callback Response": {
+      "main": [
+        [
+          {
+            "node": "Respond: Callback Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond: Report Received": {
+      "main": [
+        [
+          {
+            "node": "Log Call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "tags": []
+}

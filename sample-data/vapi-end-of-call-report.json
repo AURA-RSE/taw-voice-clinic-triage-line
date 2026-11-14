@@ -1,0 +1,13 @@
+{
+  "message": {
+    "type": "end-of-call-report",
+    "endedReason": "assistant-forwarded-call",
+    "startedAt": "2026-11-16T09:00:00.000Z",
+    "endedAt": "2026-11-16T09:01:14.000Z",
+    "analysis": {
+      "summary": "Caller asked for a prescription refill. The pharmacy was open, so the caller was transferred to Pharmacy and Prescription Refills.",
+      "structuredData": { "department": "pharmacy", "outcome": "transferred", "emergency_flagged": false }
+    },
+    "call": { "id": "demo-call-0001", "type": "inboundPhoneCall", "customer": { "number": "+15550100101" } }
+  }
+}

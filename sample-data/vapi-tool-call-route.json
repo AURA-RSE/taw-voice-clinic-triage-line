@@ -1,0 +1,17 @@
+{
+  "message": {
+    "timestamp": 1794830400000,
+    "type": "tool-calls",
+    "toolCallList": [
+      {
+        "id": "call_route_demo_01",
+        "type": "function",
+        "function": {
+          "name": "route_caller",
+          "arguments": { "reason": "I need a refill on my blood pressure prescription" }
+        }
+      }
+    ],
+    "call": { "id": "demo-call-0001", "type": "inboundPhoneCall", "customer": { "number": "+15550100101" } }
+  }
+}

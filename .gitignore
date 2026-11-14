@@ -5,3 +5,7 @@
 node_modules/
 .DS_Store
 *.log
+local-n8n/
+# Google service account keys
+*service-account*.json
+clinic-triage-line-*.json

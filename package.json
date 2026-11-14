@@ -1,0 +1,14 @@
+{
+  "name": "taw-voice-clinic-triage-line",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI voice triage line for clinics: routes callers to the right department with Vapi, Twilio and n8n. No medical advice.",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "build:workflow": "node scripts/build-workflow.js",
+    "build:vapi": "node scripts/build-vapi-config.js",
+    "setup:vapi": "node scripts/setup-vapi.js"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
